@@ -7,6 +7,7 @@ Web app installabile sul telefono (Android e iPhone) per:
 - **posti liberi** sempre aggiornati e **conto alla rovescia** alla chiusura delle iscrizioni;
 - **orari evidenziati**: ritrovo entro (orario limite), partenza, rientro previsto;
 - **info utili** per ogni evento: percorso sulla mappa con tempi ipotetici, meteo sulla ski area, link.
+- **corso di sci a Pila**: 4 domeniche (ultime 2 di gennaio, prime 2 di febbraio), 100 posti con contatore e conto alla rovescia, spiegazione del corso, **questionario** che suggerisce il livello, iscrizione con scelta del livello (anche per figli e familiari), elenco iscritti diviso per livello per gli amministratori.
 
 Finché Supabase non è collegato l'app gira in **modalità prova** con dati di esempio salvati solo sul telefono.
 
@@ -59,3 +60,5 @@ Per pubblicarla su **Play Store / App Store** si può impacchettare questa stess
 | `config.js` | collegamento a Supabase e impostazioni |
 | `supabase-setup.sql` | tabelle e regole del database |
 | `manifest.webmanifest`, `sw.js`, `icons/` | icona e installazione come app |
+
+> **Aggiornamenti:** quando il file `supabase-setup.sql` cambia (es. aggiunta del corso), rieseguilo tutto nel SQL Editor: si può rilanciare senza perdere dati.

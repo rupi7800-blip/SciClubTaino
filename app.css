@@ -181,3 +181,51 @@ textarea{min-height:90px;resize:vertical}
   .orario b{font-size:1.45rem} .orario.limite b{font-size:1.7rem}
   .contatori{grid-template-columns:repeat(2,1fr)}
 }
+
+/* corso */
+.corso-banda{background:linear-gradient(120deg,var(--nero) 0%,#2a2a2a 60%,var(--rosso-scuro) 100%);color:#fff;padding:18px 16px 16px}
+.corso-banda span{display:block;font-size:.78rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;opacity:.8}
+.corso-banda b{display:block;font-family:var(--titoli);font-style:italic;font-weight:800;font-size:1.8rem;line-height:1.05;margin:2px 0 4px}
+.corso-banda small{color:rgba(255,255,255,.85);font-weight:600}
+.date-corso{display:grid;grid-template-columns:repeat(auto-fit,minmax(68px,1fr));gap:6px;padding:14px 16px 8px}
+.giorno-corso{background:var(--grigio-chiaro);border-radius:12px;text-align:center;padding:6px 2px}
+.giorno-corso span{display:block;font-size:.64rem;font-weight:700;color:var(--grigio);text-transform:uppercase}
+.giorno-corso b{display:block;font-family:var(--titoli);font-weight:800;font-style:italic;font-size:1.7rem;line-height:1.05}
+.giorno-corso small{font-size:.72rem;font-weight:600;text-transform:capitalize}
+.giorno-corso.prossimo{background:var(--nero);color:#fff} .giorno-corso.prossimo span,.giorno-corso.prossimo small{color:rgba(255,255,255,.8)}
+.giorno-corso.fatto{opacity:.45}
+.countdown.apertura{background:#e7f0fd;color:#1d4f91}
+.testo-lungo h3{font-size:1.15rem;margin:14px 0 6px} .testo-lungo h3:first-child{margin-top:0}
+.testo-lungo ul{margin:0 0 .7em;padding-left:1.2em} .testo-lungo li{margin-bottom:4px}
+.livelli{display:grid;gap:8px}
+.livello{display:flex;gap:12px;align-items:flex-start;background:var(--grigio-chiaro);border-radius:12px;padding:10px 12px;font-weight:400}
+.livello b{display:block} .livello small{display:block;font-weight:600} .livello p{margin:4px 0 0;font-size:.9rem}
+.livello.evidenziato{box-shadow:inset 0 0 0 2px var(--verde);background:var(--verde-chiaro)}
+.livelli.scelta .livello{cursor:pointer;margin:0;position:relative}
+.livelli.scelta input{position:absolute;opacity:0;pointer-events:none}
+.livelli.scelta .livello:has(input:checked){box-shadow:inset 0 0 0 2.5px var(--rosso);background:var(--rosso-chiaro)}
+.livelli.scelta .livello:has(input:focus-visible){outline:2px solid var(--nero)}
+.num{flex:none;display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;color:#fff;font-family:var(--titoli);font-weight:800;font-style:italic;font-size:1.3rem;background:#888}
+.num.piccolo{width:26px;height:26px;font-size:1rem;vertical-align:middle;border-radius:8px}
+.num.grande{width:72px;height:72px;font-size:2.8rem;border-radius:18px;margin-bottom:8px}
+.l1{background:#3fa34d}.l2{background:#2e8bc0}.l3{background:#1f5fa8}.l4{background:#d9822b}.l5{background:#c8322b}.l6{background:#151515}
+.livello-tag{display:inline-block;color:#fff;font-size:.78rem;font-weight:700;padding:3px 9px;border-radius:99px;margin-top:4px}
+.avanzamento{position:sticky;top:64px;z-index:5;height:6px;background:var(--grigio-chiaro);border-radius:99px;overflow:hidden;margin:4px 0 14px}
+.avanzamento i{display:block;height:100%;width:0;background:var(--rosso);transition:width .3s}
+fieldset.domanda{border:0;margin:0 0 12px}
+.domanda legend{float:left;width:100%;font-family:var(--titoli);font-style:italic;font-weight:800;font-size:1.3rem;line-height:1.1;margin-bottom:10px}
+.domanda legend span{display:inline-block;font-size:.85rem;font-style:normal;color:var(--grigio);margin-right:4px}
+.opzione{display:flex;gap:10px;align-items:center;background:var(--grigio-chiaro);border-radius:12px;padding:11px 12px;margin:0 0 6px;font-weight:500;cursor:pointer;clear:both}
+.opzione input{width:20px;height:20px;flex:none;accent-color:var(--rosso)}
+.opzione:has(input:checked){background:var(--rosso-chiaro);box-shadow:inset 0 0 0 2px var(--rosso)}
+.opzione:has(input:disabled){opacity:.5}
+.esito{background:var(--nero);color:#fff;border-radius:var(--raggio);padding:22px 18px;text-align:center;margin-bottom:16px}
+.esito h2{font-size:1.8rem;margin:2px 0 8px}
+.perche{text-align:left;font-size:.88rem;background:rgba(255,255,255,.08);border-radius:12px;padding:10px 12px 10px 28px;margin:10px 0}
+.perche b{display:block;opacity:.7;font-weight:600}
+.contatori.sei{grid-template-columns:repeat(6,1fr)}
+.contatori.sei a{background:#fff;box-shadow:var(--ombra);border-radius:12px;padding:8px 2px;text-align:center;text-decoration:none;color:var(--nero)}
+.sel-livello{width:auto;padding:6px 8px;font-size:.9rem;border-radius:8px}
+.menu a{font-size:.7rem}
+#q-esito,.domanda{scroll-margin-top:90px}
+html,body{overflow-x:hidden}

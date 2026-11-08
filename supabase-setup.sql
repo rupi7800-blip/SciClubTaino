@@ -217,6 +217,115 @@ grant execute on function public.elenco_admin()            to authenticated;
 grant execute on function public.aggiungi_admin(text)      to authenticated;
 grant execute on function public.rimuovi_admin(uuid)      to authenticated;
 
+-- ---------- 8. CORSO DI SCI (Pila) -----------------------------------
+create table if not exists public.corsi (
+  id            uuid primary key default gen_random_uuid(),
+  titolo        text not null check (char_length(titolo) between 1 and 120),
+  stagione      text,
+  localita      text not null default 'Pila (AO)',
+  dest_lat      double precision,
+  dest_lon      double precision,
+  descrizione   text check (descrizione is null or char_length(descrizione) <= 6000),
+  date_lezioni  date[] not null default '{}',
+  ritrovo_luogo text not null default 'Taino (VA)',
+  ritrovo_lat   double precision,
+  ritrovo_lon   double precision,
+  ora_ritrovo   time not null default '05:45',
+  ora_partenza  time not null default '06:00',
+  ora_rientro   time,
+  mezzo         text not null default 'pullman' check (mezzo in ('pullman','auto','minibus')),
+  posti         integer not null default 100 check (posti between 1 and 1000),
+  apertura      timestamptz,
+  chiusura      timestamptz not null,
+  quota         text check (quota is null or char_length(quota) <= 300),
+  sito_info     text,
+  solo_soci     boolean not null default true,
+  creato        timestamptz not null default now()
+);
+alter table public.corsi enable row level security;
+drop policy if exists "corsi tutti leggono"   on public.corsi;
+drop policy if exists "corsi admin crea"      on public.corsi;
+drop policy if exists "corsi admin modifica"  on public.corsi;
+drop policy if exists "corsi admin elimina"   on public.corsi;
+create policy "corsi tutti leggono"  on public.corsi for select to anon, authenticated using (true);
+create policy "corsi admin crea"     on public.corsi for insert to authenticated with check (public.is_admin());
+create policy "corsi admin modifica" on public.corsi for update to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy "corsi admin elimina"  on public.corsi for delete to authenticated using (public.is_admin());
+
+create table if not exists public.iscrizioni_corso (
+  id                uuid primary key default gen_random_uuid(),
+  corso_id          uuid not null references public.corsi(id) on delete cascade,
+  user_id           uuid not null references public.profili(user_id) on delete cascade,
+  part_nome         text not null check (char_length(part_nome) between 1 and 60),
+  part_cognome      text not null check (char_length(part_cognome) between 1 and 60),
+  part_nascita      date,
+  per_me            boolean not null default true,
+  livello           integer not null check (livello between 1 and 6),
+  livello_suggerito integer check (livello_suggerito is null or livello_suggerito between 1 and 6),
+  risposte          jsonb,
+  note              text check (note is null or char_length(note) <= 500),
+  creato            timestamptz not null default now()
+);
+create unique index if not exists iscr_corso_unica on public.iscrizioni_corso (corso_id, lower(part_nome), lower(part_cognome), part_nascita);
+alter table public.iscrizioni_corso enable row level security;
+drop policy if exists "iscr corso leggi"          on public.iscrizioni_corso;
+drop policy if exists "iscr corso admin modifica" on public.iscrizioni_corso;
+create policy "iscr corso leggi" on public.iscrizioni_corso for select to authenticated using (user_id = auth.uid() or public.is_admin());
+create policy "iscr corso admin modifica" on public.iscrizioni_corso for update to authenticated using (public.is_admin()) with check (public.is_admin());
+
+create or replace function public.conteggi_corso()
+returns table (corso_id uuid, iscritti integer)
+language sql stable security definer set search_path = public as $$
+  select corso_id, count(*)::int from public.iscrizioni_corso group by corso_id;
+$$;
+
+create or replace function public.iscriviti_corso(
+  p_corso uuid, p_nome text, p_cognome text, p_nascita date, p_per_me boolean,
+  p_livello integer, p_suggerito integer default null, p_risposte jsonb default null, p_note text default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare c public.corsi; n integer; mie integer;
+begin
+  if auth.uid() is null then raise exception 'Devi accedere per iscriverti'; end if;
+  if not exists (select 1 from public.profili where user_id = auth.uid()) then
+    raise exception 'Completa prima i tuoi dati nella sezione Tessera';
+  end if;
+  select * into c from public.corsi where id = p_corso for update;
+  if not found then raise exception 'Corso non trovato'; end if;
+  if c.apertura is not null and now() < c.apertura then raise exception 'Le iscrizioni al corso non sono ancora aperte'; end if;
+  if now() > c.chiusura then raise exception 'Le iscrizioni al corso sono chiuse'; end if;
+  if c.solo_soci and not public.socio_attivo(auth.uid()) then
+    raise exception 'Per iscriverti al corso serve il tesseramento attivo';
+  end if;
+  if p_livello is null or p_livello not between 1 and 6 then raise exception 'Scegli il livello'; end if;
+  select count(*) into mie from public.iscrizioni_corso where corso_id = p_corso and user_id = auth.uid();
+  if mie >= 6 then raise exception 'Puoi iscrivere al massimo 6 persone dal tuo account'; end if;
+  select count(*) into n from public.iscrizioni_corso where corso_id = p_corso;
+  if n >= c.posti then raise exception 'Posti esauriti'; end if;
+  insert into public.iscrizioni_corso (corso_id, user_id, part_nome, part_cognome, part_nascita, per_me, livello, livello_suggerito, risposte, note)
+  values (p_corso, auth.uid(), trim(p_nome), trim(p_cognome), p_nascita, coalesce(p_per_me, true), p_livello, p_suggerito, p_risposte, nullif(trim(p_note), ''));
+exception when unique_violation then
+  raise exception 'Questa persona è già iscritta al corso';
+end $$;
+
+create or replace function public.annulla_iscrizione_corso(p_iscrizione uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare i public.iscrizioni_corso; c public.corsi;
+begin
+  select * into i from public.iscrizioni_corso where id = p_iscrizione;
+  if not found then raise exception 'Iscrizione non trovata'; end if;
+  if public.is_admin() then delete from public.iscrizioni_corso where id = p_iscrizione; return; end if;
+  if i.user_id <> auth.uid() then raise exception 'Operazione non permessa'; end if;
+  select * into c from public.corsi where id = i.corso_id;
+  if now() > c.chiusura then raise exception 'Iscrizioni chiuse: per cancellarti contatta gli organizzatori'; end if;
+  delete from public.iscrizioni_corso where id = p_iscrizione;
+end $$;
+
+revoke all on function public.iscriviti_corso(uuid, text, text, date, boolean, integer, integer, jsonb, text) from public, anon;
+revoke all on function public.annulla_iscrizione_corso(uuid) from public, anon;
+grant execute on function public.conteggi_corso() to anon, authenticated;
+grant execute on function public.iscriviti_corso(uuid, text, text, date, boolean, integer, integer, jsonb, text) to authenticated;
+grant execute on function public.annulla_iscrizione_corso(uuid) to authenticated;
+
 -- =====================================================================
 --  ULTIMO PASSO (una volta sola, DOPO esserti registrato nell'app):
 --  rendi te stesso amministratore. Sostituisci l'email e premi "Run".

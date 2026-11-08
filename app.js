@@ -115,6 +115,17 @@ function creaDemo() {
   let db = null;
   try { db = JSON.parse(localStorage.getItem(KEY)); } catch (e) { db = null; }
   if (!db || !db.eventi) { db = semina(); salva(); }
+  if (!db.corsi) { db.corsi = [semiCorso()]; db.iscCorso = []; salva(); }
+  function semiCorso() {
+    const date = domenicheCorso();
+    const ch = new Date(date[0] + 'T20:00'); ch.setDate(ch.getDate() - 10);
+    return { id: 'c1', titolo: 'Corso di sci a Pila ' + date[0].slice(0, 4), stagione: (+date[0].slice(0, 4) - 1) + '/' + date[0].slice(0, 4),
+      localita: 'Pila (AO)', dest_lat: 45.7347, dest_lon: 7.3187, descrizione: null, date_lezioni: date,
+      ritrovo_luogo: 'Taino (VA) · piazzale del municipio', ritrovo_lat: 45.767, ritrovo_lon: 8.617,
+      ora_ritrovo: '05:45', ora_partenza: '06:00', ora_rientro: '19:00', mezzo: 'pullman', posti: 100,
+      apertura: new Date(Date.now() - 864e5).toISOString(), chiusura: ch.toISOString(),
+      quota: 'Soci: quota del corso da definire (lezioni + viaggio in pullman) · skipass a parte', sito_info: 'https://www.pila.it', solo_soci: true, extra: 63 };
+  }
   const uid = () => db.utente && db.utente.id;
   const conta = e => (e.extra || 0) + db.isc.filter(i => i.evento_id === e.id).length;
   const io = () => { if (!uid()) throw new Error('Devi accedere'); return uid(); };
@@ -181,6 +192,49 @@ function creaDemo() {
     async elencoAdmin() { return db.utente ? [{ user_id: db.utente.id, email: db.utente.email }] : []; },
     async aggiungiAdmin() { throw new Error('In modalità prova sei già amministratore: la gestione del team si attiva con Supabase'); },
     async rimuoviAdmin() { throw new Error('Non disponibile in modalità prova'); },
+    async corsi() {
+      const id = uid();
+      return db.corsi.map(c => ({ ...c, iscritti: (c.extra || 0) + db.iscCorso.filter(i => i.corso_id === c.id).length,
+        mie: id ? db.iscCorso.filter(i => i.corso_id === c.id && i.user_id === id) : [] }));
+    },
+    async iscriviCorso(cid, d) {
+      const id = io(); const c = (await this.corsi()).find(x => x.id === cid);
+      if (!db.profili[id]) throw new Error('Completa prima i tuoi dati nella sezione Tessera');
+      if (statoIscrizioniCorso(c) === 'chiuse') throw new Error('Le iscrizioni al corso sono chiuse');
+      if (statoIscrizioniCorso(c) === 'esaurito') throw new Error('Posti esauriti');
+      if (c.solo_soci && statoTessera(db.tess.filter(t => t.user_id === id)).codice !== 'attiva') throw new Error('Per iscriverti al corso serve il tesseramento attivo');
+      if (db.iscCorso.some(i => i.corso_id === cid && i.part_nome.toLowerCase() === d.nome.toLowerCase() && i.part_cognome.toLowerCase() === d.cognome.toLowerCase())) throw new Error('Questa persona è già iscritta al corso');
+      db.iscCorso.push({ id: uuid(), corso_id: cid, user_id: id, part_nome: d.nome, part_cognome: d.cognome, part_nascita: d.nascita, per_me: d.per_me,
+        livello: d.livello, livello_suggerito: d.suggerito, risposte: d.risposte, note: d.note, creato: new Date().toISOString() });
+      salva();
+    },
+    async annullaCorso(iid) {
+      if (db.finti && db.finti.lista.some(x => x.id === iid)) { db.finti.lista = db.finti.lista.filter(x => x.id !== iid); const c = db.corsi.find(x => x.id === db.finti.corso); c.extra--; }
+      db.iscCorso = db.iscCorso.filter(i => i.id !== iid); salva();
+    },
+    async salvaCorso(c) {
+      if (c.id) { const i = db.corsi.findIndex(x => x.id === c.id); db.corsi[i] = { ...db.corsi[i], ...c }; }
+      else db.corsi.push({ ...c, id: uuid() });
+      salva();
+    },
+    async eliminaCorso(cid) { db.corsi = db.corsi.filter(c => c.id !== cid); db.iscCorso = db.iscCorso.filter(i => i.corso_id !== cid); salva(); },
+    async iscrittiCorso(cid) {
+      const c = db.corsi.find(x => x.id === cid);
+      const nomi = [['Alessandro', 'Galli'], ['Beatrice', 'Conti'], ['Chiara', 'Mariani'], ['Davide', 'Fontana'], ['Elena', 'Rinaldi'], ['Filippo', 'Caruso'], ['Giorgia', 'Ferri'], ['Matteo', 'Gatti'], ['Nicolò', 'Testa'], ['Sofia', 'Villa']];
+      if (!db.finti || db.finti.corso !== cid || db.finti.lista.length !== (c.extra || 0)) {
+        db.finti = { corso: cid, lista: Array.from({ length: c.extra || 0 }, (_, k) => {
+          const [n, cg] = nomi[k % nomi.length]; const bimbo = k % 3 !== 0;
+          return { id: 'fc' + k, corso_id: cid, user_id: 's' + (k % 5 + 1), part_nome: n, part_cognome: cg + (k >= nomi.length ? ' ' + (Math.floor(k / nomi.length) + 1) : ''),
+            part_nascita: bimbo ? `${2012 + k % 9}-0${1 + k % 9}-1${k % 9}` : null, per_me: !bimbo, livello: [1, 2, 2, 3, 3, 3, 4, 4, 5, 6][k % 10],
+            livello_suggerito: k % 4 ? [1, 2, 2, 3, 3, 3, 4, 4, 5, 6][k % 10] : null, note: k === 4 ? 'Serve noleggio sci e scarponi' : null, creato: new Date().toISOString() };
+        }) };
+        salva();
+      }
+      return [...db.finti.lista, ...db.iscCorso.filter(i => i.corso_id === cid)].map(i => ({ ...i, profilo: db.profili[i.user_id] || null }));
+    },
+    async aggiornaIscrizioneCorso(iid, f) {
+      const i = db.iscCorso.find(x => x.id === iid) || db.finti?.lista.find(x => x.id === iid); if (i) Object.assign(i, f); salva();
+    },
     azzera() { localStorage.removeItem(KEY); location.reload(); }
   };
 }
@@ -247,7 +301,25 @@ function creaSupabase() {
     async eliminaTesseramento(tid) { ck(await sb.from('tesseramenti').delete().eq('id', tid)); },
     async elencoAdmin() { return ck(await sb.rpc('elenco_admin')); },
     async aggiungiAdmin(email) { ck(await sb.rpc('aggiungi_admin', { p_email: email })); },
-    async rimuoviAdmin(uid) { ck(await sb.rpc('rimuovi_admin', { p_user: uid })); }
+    async rimuoviAdmin(uid) { ck(await sb.rpc('rimuovi_admin', { p_user: uid })); },
+    async corsi() {
+      const [cs, cnt] = await Promise.all([sb.from('corsi').select('*').then(ck), sb.rpc('conteggi_corso').then(ck)]);
+      const mie = sessione ? ck(await sb.from('iscrizioni_corso').select('*').eq('user_id', sessione.user.id).order('creato')) : [];
+      const n = Object.fromEntries((cnt || []).map(x => [x.corso_id, x.iscritti]));
+      return cs.map(c => ({ ...c, iscritti: n[c.id] || 0, mie: mie.filter(i => i.corso_id === c.id) }));
+    },
+    async iscriviCorso(cid, d) {
+      ck(await sb.rpc('iscriviti_corso', { p_corso: cid, p_nome: d.nome, p_cognome: d.cognome, p_nascita: d.nascita, p_per_me: d.per_me,
+        p_livello: d.livello, p_suggerito: d.suggerito, p_risposte: d.risposte, p_note: d.note }));
+    },
+    async annullaCorso(iid) { ck(await sb.rpc('annulla_iscrizione_corso', { p_iscrizione: iid })); },
+    async salvaCorso(c) {
+      const { id: cid, iscritti, mie, ...r } = c;
+      if (cid) ck(await sb.from('corsi').update(r).eq('id', cid)); else ck(await sb.from('corsi').insert(r));
+    },
+    async eliminaCorso(cid) { ck(await sb.from('corsi').delete().eq('id', cid)); },
+    async iscrittiCorso(cid) { return ck(await sb.from('iscrizioni_corso').select('*, profilo:profili(nome,cognome,telefono,email)').eq('corso_id', cid).order('creato')); },
+    async aggiornaIscrizioneCorso(iid, f) { ck(await sb.from('iscrizioni_corso').update(f).eq('id', iid)); }
   };
 }
 
@@ -305,6 +377,7 @@ async function mostra() {
   try {
     if (sez === 'eventi') await vistaEventi();
     else if (sez === 'evento') await vistaEvento(parti[1]);
+    else if (sez === 'corso') await vistaCorso(parti[1]);
     else if (sez === 'tessera') await vistaTessera(parti[1]);
     else if (sez === 'account') vistaAccount(parti[1]);
     else if (sez === 'nuova-password') vistaNuovaPassword();
@@ -422,6 +495,14 @@ async function vistaEventi() {
 
 /* countdown chiusura iscrizioni (ogni secondo) */
 function aggiornaCountdown() {
+  $$('[data-apertura]').forEach(el => {
+    const diff = new Date(el.dataset.apertura) - Date.now();
+    if (diff <= 0) { if (!el.dataset.fatto) { el.dataset.fatto = 1; setTimeout(mostra, 800); } return; }
+    const s = Math.floor(diff / 1000), g = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
+    el.className = 'countdown apertura';
+    el.innerHTML = `<span>🔔 Iscrizioni aprono tra</span><span class="cd-tempo">${g > 0 ? g + 'g ' : ''}${p2(h)}:${p2(m)}:${p2(sec)}</span>`;
+    el.title = 'Apertura: ' + fmtDataOra(el.dataset.apertura);
+  });
   $$('[data-chiusura]').forEach(el => {
     const diff = new Date(el.dataset.chiusura) - Date.now();
     if (diff <= 0) {
@@ -549,6 +630,410 @@ async function caricaMeteo(e) {
       ${zero != null ? `<div><span>Zero termico</span><b>${Math.round(zero / 50) * 50} m</b></div>` : ''}
     </div><p class="nota" style="margin-top:8px">Previsione per ${esc(fmtGiorno(e.partenza))} alla quota della località (Open-Meteo). *Stima del modello, non il bollettino ufficiale delle piste.</p>`;
   } catch (er) { box.textContent = 'Previsioni non raggiungibili in questo momento.'; }
+}
+
+/* =====================================================================
+   CORSO DI SCI
+   ===================================================================== */
+const LIVELLI = [
+  { n: 1, nome: 'Principiante', breve: 'Mai sciato o solo poche volte',
+    desc: 'Si parte da zero: equilibrio sugli sci, scivolare, fermarsi a spazzaneve sul campo scuola e usare il tapis roulant.' },
+  { n: 2, nome: 'Spazzaneve', breve: 'Scendo e mi fermo a spazzaneve su piste facili',
+    desc: 'Curve a spazzaneve ben controllate, primi skilift e seggiovie, piste verdi e blu facili.' },
+  { n: 3, nome: 'Verso il parallelo', breve: 'Curve a spazzaneve sicure sulle piste blu',
+    desc: 'Si impara a riunire gli sci durante la curva, a derapare e a usare i bastoncini.' },
+  { n: 4, nome: 'Parallelo base', breve: 'Sci paralleli su piste blu e rosse facili',
+    desc: 'Consolidare la curva a sci paralleli, controllare la velocità, affrontare le prime piste rosse.' },
+  { n: 5, nome: 'Parallelo dinamico', breve: 'Piste rosse in sicurezza, prime nere',
+    desc: 'Ritmo, curve condotte, puntata del bastoncino, neve varia e piste nere facili.' },
+  { n: 6, nome: 'Perfezionamento', breve: 'Scio ovunque e voglio migliorare la tecnica',
+    desc: 'Carving, gobbe, neve fresca, nere ripide; per chi vuole affinare lo stile o avvicinarsi ai pali.' }
+];
+const nomeLivello = n => { const l = LIVELLI.find(x => x.n === +n); return l ? `Livello ${l.n} · ${l.nome}` : '—'; };
+
+// v = livello indicato dalla risposta; null = la risposta non dice nulla sul livello
+const DOMANDE = [
+  { id: 'esperienza', testo: 'Da quanto tempo scii?', peso: 1, opz: [
+    ['Non ho mai sciato', 1], ['Ho fatto da 1 a 5 giornate', 2], ['Una o due stagioni', 3],
+    ['Da 3 a 5 stagioni', 4], ['Scio da molti anni', 5], ['Gareggio o ho gareggiato', 6]] },
+  { id: 'fermarsi', testo: 'Come ti fermi?', peso: 1.5, opz: [
+    ['Non riesco ancora a fermarmi', 1], ['A spazzaneve, con un po\' di fatica', 2], ['A spazzaneve, sempre e senza problemi', 3],
+    ['Con gli sci paralleli (derapata) sulle piste facili', 4], ['Con gli sci paralleli ovunque, anche quando vado veloce', 5.5]] },
+  { id: 'piste', testo: 'Quali piste scendi in sicurezza?', peso: 2, opz: [
+    ['Nessuna: solo campo scuola o mai provato', 1], ['Le verdi', 2], ['Le blu', 3],
+    ['Le rosse, ma con qualche difficoltà', 4], ['Le rosse senza problemi', 5], ['Anche le nere, senza problemi', 6]] },
+  { id: 'curve', testo: 'Come curvi?', peso: 2, opz: [
+    ['Non so ancora curvare', 1], ['A spazzaneve', 2], ['A spazzaneve, ma a fine curva riunisco gli sci', 3],
+    ['A sci paralleli sul facile; sul ripido apro a spazzaneve', 4], ['Sempre a sci paralleli, con ritmo', 5], ['Curve condotte sulle lamine (carving)', 6]] },
+  { id: 'impianti', testo: 'Come te la cavi con gli impianti di risalita?', peso: 0.5, opz: [
+    ['Non li ho mai presi', 1], ['Solo tapis roulant o manovia', 2], ['Skilift e seggiovia, ma con un po\' di insicurezza', 3], ['Prendo tutti gli impianti senza problemi', null]] },
+  { id: 'neve', testo: 'Gobbe, ghiaccio o neve fresca?', peso: 1, opz: [
+    ['Non le ho ancora provate', null], ['Le evito: vado in difficoltà', 3.5], ['Me la cavo', 5], ['Mi diverto!', 6]] },
+  { id: 'bastoncini', testo: 'Come usi i bastoncini?', peso: 0.5, opz: [
+    ['Non li uso o mi servono solo per spingermi', 2.5], ['Li punto ogni tanto in curva', 4], ['Puntata ritmica a ogni curva', 5.5]] },
+  { id: 'obiettivo', testo: 'Cosa vuoi ottenere dal corso?', peso: 0, opz: [
+    ['Imparare a sciare', null], ['Acquistare sicurezza', null], ['Migliorare la tecnica', null], ['Perfezionarmi o prepararmi alle gare', null]] }
+];
+function calcolaLivello(risposte) {
+  let somma = 0, pesi = 0;
+  DOMANDE.forEach(d => { const v = d.opz[risposte[d.id]]?.[1]; if (v != null && d.peso) { somma += v * d.peso; pesi += d.peso; } });
+  const media = pesi ? somma / pesi : 1;
+  let liv = Math.round(media);
+  const v = id => DOMANDE.find(d => d.id === id).opz[risposte[id]][1];
+  liv = Math.min(liv, v('piste') + 1, v('curve') + 1);   // mai oltre ciò che si sa fare in sicurezza
+  if (v('esperienza') === 1) liv = 1;
+  liv = Math.max(1, Math.min(6, liv));
+  const resto = media - Math.floor(media);
+  const dubbio = resto > 0.35 && resto < 0.65 && Math.floor(media) >= 1 && Math.ceil(media) <= 6 ? [Math.floor(media), Math.ceil(media)] : null;
+  return { livello: liv, media: Math.round(media * 10) / 10, dubbio };
+}
+const QUIZ_KEY = 'sct-quiz';
+const leggiQuiz = () => { try { return JSON.parse(sessionStorage.getItem(QUIZ_KEY)); } catch (e) { return null; } };
+
+function domenicheCorso() { // ultime 2 settimane di gennaio + prime 2 di febbraio
+  const ora = new Date(); const anno = (ora.getMonth() >= 2 || (ora.getMonth() === 1 && ora.getDate() > 14)) ? ora.getFullYear() + 1 : ora.getFullYear();
+  const out = [];
+  for (const [m, da, a] of [[0, 18, 31], [1, 1, 14]]) for (let g = da; g <= a; g++) {
+    const d = new Date(Date.UTC(anno, m, g)); if (d.getUTCDay() === 0) out.push(d.toISOString().slice(0, 10));
+  }
+  return out;
+}
+const DESCRIZIONE_CORSO = `Il corso si svolge a Pila, in Valle d'Aosta, in 4 domeniche: le ultime due di gennaio e le prime due di febbraio.
+
+LA GIORNATA TIPO
+• Ritrovo a Taino e partenza in pullman al mattino presto.
+• Arrivo a Pila, consegna degli skipass e ritrovo con i maestri della scuola sci.
+• Lezione in piccoli gruppi omogenei, divisi per livello.
+• Pausa pranzo e pomeriggio di sci libero con gli amici del club.
+• Ritrovo al pullman e rientro a Taino in serata.
+
+I GRUPPI E I LIVELLI
+Al momento dell'iscrizione scegli il livello che pensi di avere: se hai dubbi, compila il questionario e ti suggeriamo noi il gruppo giusto. La prima domenica i maestri osservano tutti e, se serve, spostano qualcuno nel gruppo più adatto.
+
+COSA PORTARE
+Sci o snowboard, scarponi, casco (obbligatorio per i minori di 18 anni), occhiali o maschera, guanti, crema solare, documento e tessera del club.`;
+
+const ora5 = t => t ? String(t).slice(0, 5) : '';
+function prossimaData(c) {
+  const oggi = oggiISO(); const d = (c.date_lezioni || []).slice().sort();
+  return d.find(x => x >= oggi) || d[d.length - 1] || null;
+}
+function eventoDaCorso(c, data) { // per riusare orari, viaggio e meteo degli eventi
+  data = data || prossimaData(c);
+  const dt = o => o && data ? componi(data, ora5(o)).toISOString() : null;
+  let rientro = dt(c.ora_rientro);
+  if (rientro && rientro <= dt(c.ora_partenza)) rientro = new Date(new Date(rientro).getTime() + 864e5).toISOString();
+  return { ...c, destinazione: c.localita, ritrovo_entro: dt(c.ora_ritrovo), partenza: dt(c.ora_partenza), rientro };
+}
+function corsoCorrente(corsi) {
+  const oggi = oggiISO();
+  const attivi = corsi.filter(c => (c.date_lezioni || []).some(d => d >= oggi) || new Date(c.chiusura) > Date.now());
+  const ord = (a, b) => ((a.date_lezioni || [])[0] || '').localeCompare((b.date_lezioni || [])[0] || '');
+  if (attivi.length) return attivi.sort(ord)[0];
+  return corsi.slice().sort(ord).pop() || null;
+}
+function etaDa(nascita) {
+  if (!nascita) return null; const n = new Date(nascita + 'T12:00:00Z'), o = new Date();
+  let e = o.getFullYear() - n.getUTCFullYear(); if (o.getMonth() < n.getUTCMonth() || (o.getMonth() === n.getUTCMonth() && o.getDate() < n.getUTCDate())) e--; return e;
+}
+function statoIscrizioniCorso(c) {
+  if (c.apertura && Date.now() < new Date(c.apertura)) return 'non_aperte';
+  if (Date.now() > new Date(c.chiusura)) return 'chiuse';
+  if (c.iscritti >= c.posti) return 'esaurito';
+  return 'aperte';
+}
+
+async function vistaCorso(sotto) {
+  const corsi = await API.corsi();
+  const c = corsoCorrente(corsi);
+  if (sotto === 'questionario') return vistaQuestionario(c);
+  if (sotto === 'iscrizione') return vistaIscrizioneCorso(c);
+  if (!c) {
+    app.innerHTML = `<h1>Corso di sci</h1><div class="scheda vuoto">Il corso della prossima stagione non è ancora stato pubblicato.<br>Intanto puoi scoprire il tuo livello.</div>
+      <a class="btn pieno" href="#/corso/questionario">📝 Fai il questionario sul livello</a>`; return;
+  }
+  const ev = eventoDaCorso(c);
+  const oggi = oggiISO();
+  const date = (c.date_lezioni || []).slice().sort();
+  const pross = prossimaData(c);
+  const st = statoIscrizioniCorso(c);
+  let bottone = '';
+  if (st === 'non_aperte') bottone = `<button class="btn" disabled>Iscrizioni non ancora aperte</button>`;
+  else if (st === 'chiuse') bottone = `<button class="btn" disabled>Iscrizioni chiuse</button>`;
+  else if (st === 'esaurito') bottone = `<button class="btn" disabled>Posti esauriti</button>`;
+  else if (!S.utente) bottone = `<a class="btn" href="#/account">Accedi per iscriverti</a>`;
+  else if (!S.profilo) bottone = `<a class="btn" href="#/tessera">Completa i tuoi dati</a>`;
+  else if (c.solo_soci && !socioAttivo()) bottone = `<a class="btn contorno" href="#/tessera">Serve la tessera attiva</a>`;
+  else bottone = `<a class="btn" href="#/corso/iscrizione">${c.mie.length ? '＋ Iscrivi un\'altra persona' : 'Iscriviti al corso'}</a>`;
+  const quiz = leggiQuiz();
+  app.innerHTML = `<h1>Corso di sci</h1>
+    <article class="evento corso" id="corso-${c.id}">
+      <div class="corso-banda"><span>⛷️ ${esc(c.stagione || '')}</span><b>${esc(c.titolo)}</b><small>📍 ${esc(c.localita)}</small></div>
+      <div class="date-corso">${date.map((d, i) => `<div class="giorno-corso ${d < oggi ? 'fatto' : ''} ${d === pross ? 'prossimo' : ''}">
+        <span>${i + 1}ª · ${new Date(d + 'T12:00:00Z').toLocaleDateString('it-IT', { weekday: 'short', timeZone: TZ }).replace('.', '')}</span><b>${new Date(d + 'T12:00:00Z').toLocaleDateString('it-IT', { day: 'numeric', timeZone: TZ })}</b>
+        <small>${new Date(d + 'T12:00:00Z').toLocaleDateString('it-IT', { month: 'long', timeZone: TZ })}</small></div>`).join('')}</div>
+      ${pross ? `<p class="nota" style="padding:0 16px">Orari validi per ogni giornata · prossima: ${esc(fmtGiorno(ev.partenza))}</p>` : ''}
+      ${pross ? bloccoOrari(ev) : ''}
+      ${bloccoPostiCorso(c)}
+      <div class="ev-azioni">${bottone}<a class="btn sec" href="#/corso/questionario">📝 ${quiz ? 'Rifai il questionario' : 'Scopri il tuo livello'}</a></div>
+    </article>
+    ${c.mie.length ? `<section class="scheda"><h2>Le tue iscrizioni</h2>${c.mie.map(i => `<div class="riga-lista"><div class="info">
+      <b>${esc(i.part_nome)} ${esc(i.part_cognome)}${i.per_me ? '' : etaDa(i.part_nascita) != null ? ` <small style="display:inline">(${etaDa(i.part_nascita)} anni)</small>` : ''}</b>
+      <span class="livello-tag l${i.livello}">${esc(nomeLivello(i.livello))}</span>${i.note ? `<small>${esc(i.note)}</small>` : ''}</div>
+      ${st !== 'chiuse' ? `<div class="bottoni"><button class="btn sec piccolo" data-annulla-corso="${i.id}">Cancella</button></div>` : ''}</div>`).join('')}
+      <p class="nota" style="margin-top:8px">Il livello definitivo lo confermano i maestri la prima giornata.</p></section>` : ''}
+    ${c.quota ? `<section class="scheda"><h2>💶 Quota</h2><p style="white-space:pre-line">${esc(c.quota)}</p></section>` : ''}
+    <section class="scheda"><h2>Come si svolge il corso</h2><div class="testo-lungo">${formattaTesto(c.descrizione || DESCRIZIONE_CORSO)}</div></section>
+    <section class="scheda"><h2>I livelli</h2>
+      ${quiz ? `<div class="avviso-box verde">Dal questionario: <b>${esc(nomeLivello(quiz.livello))}</b></div>` : ''}
+      <div class="livelli">${LIVELLI.map(l => `<div class="livello ${quiz && quiz.livello === l.n ? 'evidenziato' : ''}"><span class="num l${l.n}">${l.n}</span>
+        <div><b>${esc(l.nome)}</b><small>${esc(l.breve)}</small><p>${esc(l.desc)}</p></div></div>`).join('')}</div>
+      <a class="btn sec pieno" href="#/corso/questionario" style="margin-top:12px">Non sai quale scegliere? Fai il questionario (2 minuti)</a></section>
+    ${pross ? `<section class="scheda"><h2>🚌 Il viaggio a ${esc(c.localita.split('(')[0].trim())}</h2>
+      <p class="nota" id="viaggio-info">Calcolo il percorso…</p><div class="mappa" id="mappa"></div><ol class="timeline" id="timeline"></ol>
+      <p class="nota" style="margin-top:8px">Tempi ipotetici, senza traffico né soste.</p></section>
+    <section class="scheda"><h2>🏔️ Meteo per la ${esc(fmtGiorno(ev.partenza))}</h2><div id="meteo" class="nota">Carico le previsioni…</div></section>` : ''}
+    ${c.sito_info ? `<section class="scheda"><div class="lista-link"><a href="${esc(c.sito_info)}" target="_blank" rel="noopener">Sito della ski area ↗</a></div></section>` : ''}`;
+  $$('[data-annulla-corso]').forEach(b => b.onclick = async () => {
+    const i = c.mie.find(x => x.id === b.dataset.annullaCorso);
+    if (await conferma('Cancellare l\'iscrizione?', `${esc(i.part_nome)} ${esc(i.part_cognome)} non sarà più iscritto al corso e il posto tornerà libero.`, 'Cancella', 'nero')
+      && await esegui(b, () => API.annullaCorso(i.id), 'Iscrizione cancellata')) vistaCorso();
+  });
+  if (pross) { disegnaViaggio(ev); caricaMeteo(ev); }
+  pollTimer = setInterval(async () => {
+    if (document.hidden) return;
+    try { const n = corsoCorrente(await API.corsi()); if (n && n.iscritti !== c.iscritti) vistaCorso(); } catch (e) { /* */ }
+  }, 30000);
+}
+function formattaTesto(t) {
+  return String(t).split(/\n{2,}/).map(par => {
+    const righe = par.split('\n');
+    const titolo = righe[0] === righe[0].toUpperCase() && /[A-ZÀ-Ú]/.test(righe[0]) && righe[0].length < 60 ? righe.shift() : null;
+    const punti = righe.filter(r => /^\s*[•\-*]/.test(r));
+    let h = titolo ? `<h3>${esc(titolo.charAt(0) + titolo.slice(1).toLowerCase())}</h3>` : '';
+    if (punti.length && punti.length === righe.length) h += `<ul>${punti.map(r => `<li>${esc(r.replace(/^\s*[•\-*]\s*/, ''))}</li>`).join('')}</ul>`;
+    else if (righe.length) h += `<p style="white-space:pre-line">${esc(righe.join('\n'))}</p>`;
+    return h;
+  }).join('');
+}
+function bloccoPostiCorso(c) {
+  const liberi = Math.max(0, c.posti - c.iscritti);
+  const pct = Math.min(100, c.iscritti / c.posti * 100);
+  const cls = liberi === 0 ? 'pieno' : (liberi / c.posti <= .2 ? 'quasi' : '');
+  const timer = c.apertura && Date.now() < new Date(c.apertura) ? `<div class="countdown" data-apertura="${esc(c.apertura)}"></div>` : `<div class="countdown" data-chiusura="${esc(c.chiusura)}"></div>`;
+  return `<div class="posti"><div class="barra ${cls}"><i style="width:${pct}%"></i></div>
+    <div class="posti-num"><span class="liberi ${liberi === 0 ? 'zero' : ''}"><b>${liberi}</b> ${liberi === 1 ? 'posto libero' : 'posti liberi'}</span>
+    <span>${c.iscritti} iscritti su <b>${c.posti}</b> disponibili</span></div></div>${timer}`;
+}
+
+/* ---------- questionario ---------- */
+function vistaQuestionario(c) {
+  const prec = leggiQuiz();
+  const risposte = prec && prec.risposte ? { ...prec.risposte } : {};
+  app.innerHTML = `<a class="indietro" href="#/corso">← Corso di sci</a><h1>Qual è il tuo livello?</h1>
+    <p class="nota">Rispondi con sincerità pensando a come scii oggi: ti suggeriamo il gruppo giusto per il corso. Se compili per un figlio o un'altra persona, rispondi pensando a lei.</p>
+    <div class="avanzamento"><i id="q-barra"></i></div>
+    <form id="f-quiz">${DOMANDE.map((d, k) => `<fieldset class="scheda domanda"><legend><span>${k + 1}/${DOMANDE.length}</span> ${esc(d.testo)}</legend>
+      ${d.opz.map((o, i) => `<label class="opzione"><input type="radio" name="${d.id}" value="${i}" ${risposte[d.id] === i ? 'checked' : ''}><span>${esc(o[0])}</span></label>`).join('')}
+      </fieldset>`).join('')}
+      <p class="errore" id="q-err"></p>
+      <button class="btn pieno">Scopri il livello consigliato</button></form>
+    <div id="q-esito"></div>`;
+  const barra = () => { const n = DOMANDE.filter(d => $(`input[name="${d.id}"]:checked`)).length; $('#q-barra').style.width = (n / DOMANDE.length * 100) + '%'; };
+  barra();
+  $('#f-quiz').onchange = ev => {
+    barra();
+    const fs = ev.target.closest('fieldset'); const pross = fs?.nextElementSibling;
+    if (pross && pross.matches('fieldset') && !$('input:checked', pross)) setTimeout(() => pross.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+  };
+  $('#f-quiz').onsubmit = ev => {
+    ev.preventDefault();
+    const r = {}; const manca = DOMANDE.find(d => { const x = $(`input[name="${d.id}"]:checked`); if (x) r[d.id] = +x.value; return !x; });
+    if (manca) { $('#q-err').textContent = 'Rispondi a tutte le domande'; $(`input[name="${manca.id}"]`).closest('fieldset').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    $('#q-err').textContent = '';
+    const esito = calcolaLivello(r);
+    const testi = Object.fromEntries(DOMANDE.map(d => [d.id, d.opz[r[d.id]][0].toLowerCase()]));
+    try { sessionStorage.setItem(QUIZ_KEY, JSON.stringify({ livello: esito.livello, risposte: r, testi, media: esito.media })); } catch (e) { /* */ }
+    const L = LIVELLI.find(l => l.n === esito.livello);
+    const aperte = c && statoIscrizioniCorso(c) === 'aperte';
+    $('#q-esito').innerHTML = `<div class="esito">
+      <span class="num grande l${L.n}">${L.n}</span>
+      <p class="nota" style="color:inherit;opacity:.8;margin:0">Ti consigliamo il</p>
+      <h2>Livello ${L.n} · ${esc(L.nome)}</h2>
+      <p>${esc(L.desc)}</p>
+      <ul class="perche">${['piste', 'curve', 'fermarsi'].map(id => `<li><b>${esc(DOMANDE.find(d => d.id === id).testo)}</b> ${esc(DOMANDE.find(d => d.id === id).opz[r[id]][0])}</li>`).join('')}</ul>
+      ${esito.dubbio ? `<p class="nota" style="color:inherit">Sei a metà tra il livello ${esito.dubbio[0]} e il ${esito.dubbio[1]}: nel dubbio scegli il più basso, i maestri ti sposteranno se serve.</p>` : ''}
+      ${aperte ? `<a class="btn pieno" href="#/corso/iscrizione" style="margin-top:6px">Iscriviti con il livello ${L.n}</a>` : `<a class="btn pieno" href="#/corso" style="margin-top:6px">Torna al corso</a>`}
+    </div>`;
+    $('#q-esito').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => window.scrollBy(0, -10), 400);
+  };
+}
+
+/* ---------- iscrizione al corso ---------- */
+async function vistaIscrizioneCorso(c) {
+  if (!c) { location.hash = '#/corso'; return; }
+  if (!S.utente) { location.hash = '#/account'; return; }
+  if (!S.profilo) { location.hash = '#/tessera'; return; }
+  const st = statoIscrizioniCorso(c);
+  if (st !== 'aperte' || (c.solo_soci && !socioAttivo())) { location.hash = '#/corso'; return; }
+  const quiz = leggiQuiz();
+  const giaIo = c.mie.some(i => i.per_me);
+  const liberi = c.posti - c.iscritti;
+  app.innerHTML = `<a class="indietro" href="#/corso">← Corso di sci</a><h1>Iscrizione al corso</h1>
+    <p class="nota">${esc(c.titolo)} · ${liberi} posti liberi</p>
+    <form id="f-ic">
+      <section class="scheda"><h3>Chi partecipa?</h3>
+        <label class="opzione"><input type="radio" name="chi" value="io" ${giaIo ? 'disabled' : 'checked'}><span>Io · ${esc(S.profilo.nome)} ${esc(S.profilo.cognome)}${giaIo ? ' (già iscritto)' : ''}</span></label>
+        <label class="opzione"><input type="radio" name="chi" value="altro" ${giaIo ? 'checked' : ''}><span>Un'altra persona (es. figlio, familiare)</span></label>
+        <div id="altro" ${giaIo ? '' : 'hidden'}>
+          <div class="riga" style="margin-top:10px"><div class="campo"><label for="ic-nome">Nome</label><input id="ic-nome" maxlength="60"></div>
+          <div class="campo"><label for="ic-cognome">Cognome</label><input id="ic-cognome" maxlength="60" value="${esc(S.profilo.cognome)}"></div></div>
+          <div class="campo"><label for="ic-nascita">Data di nascita</label><input id="ic-nascita" type="date"></div>
+        </div>
+      </section>
+      <section class="scheda"><h3>Livello</h3>
+        ${quiz ? `<div class="avviso-box verde">Dal questionario ti consigliamo il <b>livello ${quiz.livello}</b>. Puoi comunque sceglierne un altro.</div>`
+      : `<div class="avviso-box giallo">Non sei sicuro? <a href="#/corso/questionario">Fai il questionario</a>: in 2 minuti ti suggeriamo il livello.</div>`}
+        <div class="livelli scelta">${LIVELLI.map(l => `<label class="livello"><input type="radio" name="livello" value="${l.n}" ${quiz && quiz.livello === l.n ? 'checked' : ''}>
+          <span class="num l${l.n}">${l.n}</span><div><b>${esc(l.nome)}${quiz && quiz.livello === l.n ? ' <span class="etichetta verde">Consigliato</span>' : ''}</b><small>${esc(l.breve)}</small></div></label>`).join('')}</div>
+      </section>
+      <section class="scheda"><div class="campo" style="margin:0"><label for="ic-note">Note per gli organizzatori (facoltative)</label>
+        <textarea id="ic-note" maxlength="500" placeholder="Es. serve il noleggio dell'attrezzatura, vorrei stare nel gruppo con mio fratello…"></textarea></div></section>
+      <p class="errore" id="ic-err"></p>
+      <button class="btn pieno">Conferma iscrizione</button>
+    </form>`;
+  $$('input[name="chi"]').forEach(r => r.onchange = () => { $('#altro').hidden = $('input[name="chi"]:checked').value !== 'altro'; });
+  $('#f-ic').onsubmit = async ev => {
+    ev.preventDefault();
+    const err = $('#ic-err'); err.textContent = '';
+    const altro = $('input[name="chi"]:checked')?.value === 'altro';
+    const liv = $('input[name="livello"]:checked');
+    const dati = altro
+      ? { nome: $('#ic-nome').value.trim(), cognome: $('#ic-cognome').value.trim(), nascita: $('#ic-nascita').value || null, per_me: false }
+      : { nome: S.profilo.nome, cognome: S.profilo.cognome, nascita: S.profilo.data_nascita || null, per_me: true };
+    if (altro && (!dati.nome || !dati.cognome || !dati.nascita)) { err.textContent = 'Inserisci nome, cognome e data di nascita del partecipante'; return; }
+    if (!liv) { err.textContent = 'Scegli il livello'; liv?.scrollIntoView(); return; }
+    dati.livello = +liv.value;
+    dati.suggerito = quiz ? quiz.livello : null;
+    dati.risposte = quiz ? quiz.testi : null;
+    dati.note = $('#ic-note').value.trim() || null;
+    const ok = await conferma('Confermi l\'iscrizione?', `<b>${esc(dati.nome)} ${esc(dati.cognome)}</b><br>${esc(nomeLivello(dati.livello))}<br>${esc(c.titolo)}`, 'Iscrivi');
+    if (ok && await esegui(ev.submitter, () => API.iscriviCorso(c.id, dati), 'Iscrizione al corso confermata ✓')) {
+      try { sessionStorage.removeItem(QUIZ_KEY); } catch (e) { /* */ }
+      location.hash = '#/corso';
+    }
+  };
+}
+
+/* ---------- gestione corso (amministratori) ---------- */
+async function adminCorso() {
+  const corsi = await API.corsi();
+  const c = corsoCorrente(corsi);
+  if (!c) {
+    app.innerHTML = `${tabAdmin('corso')}<div class="scheda vuoto">Nessun corso pubblicato.</div><a class="btn pieno" href="#/admin/corso-modifica/nuovo">＋ Crea il corso</a>`; return;
+  }
+  const lista = await API.iscrittiCorso(c.id);
+  const perLiv = LIVELLI.map(l => ({ ...l, persone: lista.filter(i => i.livello === l.n).sort((a, b) => (a.part_cognome || '').localeCompare(b.part_cognome || '', 'it')) }));
+  const riga = i => {
+    const eta = etaDa(i.part_nascita);
+    const resp = i.profilo ? `${i.profilo.nome} ${i.profilo.cognome}` : '';
+    return `<div class="riga-lista"><div class="info"><b>${esc(i.part_cognome)} ${esc(i.part_nome)}${eta != null ? ` <small style="display:inline">· ${eta} anni</small>` : ''}</b>
+      ${!i.per_me && resp ? `<small>Iscritto da ${esc(resp)}</small>` : ''}
+      <small>${i.profilo?.telefono ? `<a href="tel:${esc(i.profilo.telefono.replace(/\s/g, ''))}">${esc(i.profilo.telefono)}</a> · ` : ''}${i.livello_suggerito ? `questionario: liv. ${i.livello_suggerito}` : 'senza questionario'}</small>
+      ${i.note ? `<small>📝 ${esc(i.note)}</small>` : ''}</div>
+      <div class="bottoni"><select class="sel-livello" data-sposta="${i.id}" aria-label="Livello">${LIVELLI.map(l => `<option value="${l.n}" ${l.n === i.livello ? 'selected' : ''}>Liv. ${l.n}</option>`).join('')}</select>
+      <button class="btn sec piccolo" data-togli-corso="${i.id}">Togli</button></div></div>`;
+  };
+  const testo = `${c.titolo} — iscritti per livello\n` + perLiv.filter(l => l.persone.length).map(l =>
+    `\nLIVELLO ${l.n} · ${l.nome} (${l.persone.length})\n` + l.persone.map((i, k) => `${k + 1}. ${i.part_cognome} ${i.part_nome}${etaDa(i.part_nascita) != null ? ' (' + etaDa(i.part_nascita) + ')' : ''}${i.profilo?.telefono ? ' · ' + i.profilo.telefono : ''}`).join('\n')).join('\n');
+  app.innerHTML = `${tabAdmin('corso')}
+    <div class="scheda"><div class="sezione-titolo" style="margin-top:0"><div><h3 style="margin:0">${esc(c.titolo)}</h3><small>${(c.date_lezioni || []).map(d => fmtDataSemplice(d)).join(' · ')}</small></div>
+      <a class="btn sec piccolo" href="#/admin/corso-modifica/${c.id}">Modifica</a></div>
+      <article>${bloccoPostiCorso(c)}</article></div>
+    <div class="contatori sei">${perLiv.map(l => `<a href="#liv-${l.n}"><b>${l.persone.length}</b><span>Liv. ${l.n}</span></a>`).join('')}</div>
+    <button class="btn sec pieno" id="b-copia-corso" style="margin-bottom:16px">📋 Copia elenco diviso per livello</button>
+    ${perLiv.map(l => `<div class="scheda" id="liv-${l.n}"><h3><span class="num piccolo l${l.n}">${l.n}</span> ${esc(l.nome)} <small>(${l.persone.length})</small></h3>
+      ${l.persone.length ? l.persone.map(riga).join('') : '<p class="nota">Nessun iscritto.</p>'}</div>`).join('')}
+    <p class="nota">Per una nuova stagione: <a href="#/admin/corso-modifica/nuovo">crea un nuovo corso</a>.</p>`;
+  $('#b-copia-corso').onclick = async () => { try { await navigator.clipboard.writeText(testo); avviso('Elenco copiato'); } catch (e) { avviso('Copia non riuscita', true); } };
+  $$('[data-sposta]').forEach(s => s.onchange = async () => {
+    if (await esegui(null, () => API.aggiornaIscrizioneCorso(s.dataset.sposta, { livello: +s.value }), `Spostato al livello ${s.value}`)) adminCorso();
+  });
+  $$('[data-togli-corso]').forEach(b => b.onclick = async () => {
+    if (await conferma('Togliere dal corso?', 'Il posto tornerà libero.', 'Togli', 'nero') && await esegui(b, () => API.annullaCorso(b.dataset.togliCorso), 'Tolto dal corso')) adminCorso();
+  });
+}
+
+async function adminFormCorso(id) {
+  let c = null;
+  if (id && id !== 'nuovo') { c = (await API.corsi()).find(x => x.id === id); if (!c) { location.hash = '#/admin/corso'; return; } }
+  const date = c ? c.date_lezioni : domenicheCorso();
+  const anno = (date[0] || '').slice(0, 4) || String(new Date().getFullYear() + 1);
+  const rit = c ? { nome: c.ritrovo_luogo, lat: c.ritrovo_lat, lon: c.ritrovo_lon } : (CFG.ritrovoPredefinito || { nome: 'Taino (VA)' });
+  const apDef = c?.apertura || new Date().toISOString();
+  const chDef = c?.chiusura || (() => { const x = new Date((date[0] || `${anno}-01-20`) + 'T20:00'); x.setDate(x.getDate() - 10); return x.toISOString(); })();
+  app.innerHTML = `<a class="indietro" href="#/admin/corso">← Gestione corso</a><h1>${c ? 'Modifica corso' : 'Nuovo corso'}</h1>
+  <form id="f-corso" class="scheda">
+    <div class="campo"><label for="c-titolo">Titolo</label><input id="c-titolo" required maxlength="120" value="${esc(c?.titolo || 'Corso di sci a Pila ' + anno)}"></div>
+    <div class="campo"><label for="c-stagione">Stagione</label><input id="c-stagione" maxlength="20" value="${esc(c?.stagione || (+anno - 1) + '/' + anno)}"></div>
+    ${campoLuogo('c-loc', 'Località', c?.localita || 'Pila (AO)', c ? c.dest_lat : 45.7347, c ? c.dest_lon : 7.3187, 'Serve per mappa, tempi di viaggio e meteo.')}
+    <div class="campo"><label>Giornate del corso</label><div id="c-date">${date.map(d => `<div class="cerca-luogo" style="margin-bottom:6px"><input type="date" class="c-data" value="${d}"><button type="button" class="btn sec piccolo" data-togli-data>✕</button></div>`).join('')}</div>
+      <div class="riga"><button type="button" class="btn sec piccolo" id="c-agg-data">＋ Aggiungi giornata</button><button type="button" class="btn sec piccolo" id="c-domeniche">Ultime 2 dom. gen + prime 2 feb</button></div></div>
+    <div class="riga3">
+      <div class="campo"><label for="c-ritrovo">Ritrovo entro</label><input id="c-ritrovo" type="time" required value="${ora5(c?.ora_ritrovo) || '05:45'}"></div>
+      <div class="campo"><label for="c-partenza">Partenza</label><input id="c-partenza" type="time" required value="${ora5(c?.ora_partenza) || '06:00'}"></div>
+      <div class="campo"><label for="c-rientro">Rientro</label><input id="c-rientro" type="time" value="${ora5(c?.ora_rientro) || '19:00'}"></div></div>
+    ${campoLuogo('c-rit', 'Luogo di ritrovo', rit.nome || '', rit.lat, rit.lon)}
+    <div class="riga">
+      <div class="campo"><label for="c-mezzo">Mezzo</label><select id="c-mezzo">${['pullman', 'minibus', 'auto'].map(m => `<option value="${m}" ${(c?.mezzo || 'pullman') === m ? 'selected' : ''}>${{ pullman: '🚌 Pullman', minibus: '🚐 Minibus', auto: '🚗 Auto' }[m]}</option>`).join('')}</select></div>
+      <div class="campo"><label for="c-posti">Posti</label><input id="c-posti" type="number" min="1" max="1000" required value="${c?.posti || 100}" inputmode="numeric"></div></div>
+    <div class="campo"><label>Apertura iscrizioni</label><div class="riga"><input id="c-ap-data" type="date" value="${dataInput(apDef)}"><input id="c-ap-ora" type="time" value="${oraInput(apDef)}"></div>
+      <div class="legenda">Prima di questo momento i soci vedono il conto alla rovescia all'apertura.</div></div>
+    <div class="campo"><label>Chiusura iscrizioni</label><div class="riga"><input id="c-ch-data" type="date" required value="${dataInput(chDef)}"><input id="c-ch-ora" type="time" required value="${oraInput(chDef)}"></div></div>
+    <div class="campo"><label for="c-quota">Quota e cosa comprende (facoltativa)</label><textarea id="c-quota" maxlength="300" style="min-height:70px" placeholder="Es. Soci 220 € (4 lezioni + viaggio) · skipass a parte">${esc(c?.quota)}</textarea></div>
+    <div class="campo"><label for="c-sito">Link ski area (facoltativo)</label><input id="c-sito" type="url" value="${esc(c?.sito_info || 'https://www.pila.it')}"></div>
+    <div class="campo"><label for="c-desc">Come si svolge il corso</label><textarea id="c-desc" maxlength="6000" style="min-height:320px">${esc(c?.descrizione || DESCRIZIONE_CORSO)}</textarea>
+      <div class="legenda">Righe in MAIUSCOLO = titoletti · righe che iniziano con • = elenco puntato · riga vuota = nuovo paragrafo.</div></div>
+    <div class="campo"><label class="check"><input type="checkbox" id="c-soci" ${c ? (c.solo_soci ? 'checked' : '') : 'checked'}><span>Riservato ai soci con tessera attiva (possono iscrivere anche i familiari)</span></label></div>
+    <p class="errore" id="c-err"></p>
+    <button class="btn pieno">${c ? 'Salva modifiche' : 'Pubblica il corso'}</button>
+    ${c ? '<button type="button" class="btn sec pieno" id="c-elimina" style="margin-top:10px">Elimina corso</button>' : ''}
+  </form>`;
+  collegaLuoghi();
+  const rigaData = d => { const div = document.createElement('div'); div.className = 'cerca-luogo'; div.style.marginBottom = '6px';
+    div.innerHTML = `<input type="date" class="c-data" value="${d || ''}"><button type="button" class="btn sec piccolo" data-togli-data>✕</button>`; return div; };
+  $('#c-date').onclick = ev => { if (ev.target.matches('[data-togli-data]')) ev.target.parentElement.remove(); };
+  $('#c-agg-data').onclick = () => $('#c-date').appendChild(rigaData(''));
+  $('#c-domeniche').onclick = () => { $('#c-date').innerHTML = ''; domenicheCorso().forEach(d => $('#c-date').appendChild(rigaData(d))); };
+  $('#f-corso').onsubmit = async ev => {
+    ev.preventDefault();
+    const err = $('#c-err'); err.textContent = '';
+    const giorni = [...new Set($$('.c-data').map(i => i.value).filter(Boolean))].sort();
+    if (!giorni.length) { err.textContent = 'Inserisci almeno una giornata'; return; }
+    const chiusura = componi($('#c-ch-data').value, $('#c-ch-ora').value);
+    const apertura = $('#c-ap-data').value ? componi($('#c-ap-data').value, $('#c-ap-ora').value || '00:00') : null;
+    if (apertura && apertura >= chiusura) { err.textContent = 'L\'apertura deve venire prima della chiusura'; return; }
+    if ($('#c-ritrovo').value > $('#c-partenza').value) { err.textContent = 'Il ritrovo deve essere prima della partenza'; return; }
+    const num = v => v === '' ? null : +v;
+    const dati = {
+      titolo: $('#c-titolo').value.trim(), stagione: $('#c-stagione').value.trim() || null,
+      localita: $('#c-loc-q').value.trim(), dest_lat: num($('#c-loc-lat').value), dest_lon: num($('#c-loc-lon').value),
+      date_lezioni: giorni, ora_ritrovo: $('#c-ritrovo').value, ora_partenza: $('#c-partenza').value, ora_rientro: $('#c-rientro').value || null,
+      ritrovo_luogo: $('#c-rit-q').value.trim(), ritrovo_lat: num($('#c-rit-lat').value), ritrovo_lon: num($('#c-rit-lon').value),
+      mezzo: $('#c-mezzo').value, posti: +$('#c-posti').value,
+      apertura: apertura ? apertura.toISOString() : null, chiusura: chiusura.toISOString(),
+      quota: $('#c-quota').value.trim() || null, sito_info: $('#c-sito').value.trim() || null,
+      descrizione: $('#c-desc').value.trim() || null, solo_soci: $('#c-soci').checked
+    };
+    if (c && dati.posti < c.iscritti) { err.textContent = `Ci sono già ${c.iscritti} iscritti: i posti non possono essere meno`; return; }
+    if (c) dati.id = c.id;
+    if (await esegui(ev.submitter, () => API.salvaCorso(dati), c ? 'Corso aggiornato ✓' : 'Corso pubblicato ✓')) location.hash = '#/admin/corso';
+  };
+  if ($('#c-elimina')) $('#c-elimina').onclick = async () => {
+    if (await conferma('Eliminare il corso?', `Verranno cancellate anche le <b>${c.iscritti}</b> iscrizioni. Non si può annullare.`, 'Elimina', 'nero')
+      && await esegui($('#c-elimina'), () => API.eliminaCorso(c.id), 'Corso eliminato')) location.hash = '#/admin/corso';
+  };
 }
 
 /* =====================================================================
@@ -717,6 +1202,7 @@ if (!installata() && isIOS()) $('#btn-installa').hidden = false;
 function tabAdmin(att) {
   return `<h1>Gestione</h1><nav class="schede-tab">
     <a href="#/admin" class="${att === 'eventi' ? 'attivo' : ''}">🎿 Eventi</a>
+    <a href="#/admin/corso" class="${att === 'corso' ? 'attivo' : ''}">⛷️ Corso</a>
     <a href="#/admin/soci" class="${att === 'soci' ? 'attivo' : ''}">🪪 Soci</a>
     <a href="#/admin/team" class="${att === 'team' ? 'attivo' : ''}">🛠️ Amministratori</a></nav>`;
 }
@@ -725,6 +1211,8 @@ async function vistaAdmin(sez, id) {
   if (sez === 'evento') return adminFormEvento(id);
   if (sez === 'iscritti') return adminIscritti(id);
   if (sez === 'soci') return adminSoci(id);
+  if (sez === 'corso') return adminCorso();
+  if (sez === 'corso-modifica') return adminFormCorso(id);
   if (sez === 'team') return adminTeam();
   location.hash = '#/admin';
 }

@@ -1,5 +1,5 @@
 // Service worker: rende l'app installabile e apribile anche con poca rete.
-const CACHE = 'sct-v1';
+const CACHE = 'sct-v2';
 const FILES = ['./', './index.html', './app.css', './app.js', './config.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/logo-trasparente.png'];
 
