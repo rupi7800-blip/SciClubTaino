@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sci Club Taino</title>
+<meta name="description" content="Tesseramento, eventi e iscrizioni dello Sci Club Taino">
+<meta name="theme-color" content="#e23340">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/favicon.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Sci Club Taino">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;1,700;1,800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="testata">
+  <a href="#/eventi" class="logo" aria-label="Sci Club Taino — eventi"><img src="icons/logo-trasparente.png" alt="Sci Club Taino"></a>
+  <button id="btn-installa" class="btn-installa" hidden>📲 Installa app</button>
+</header>
+<div id="banner-demo" class="banner-demo" hidden>Modalità prova · i dati restano solo su questo dispositivo</div>
+<main id="app" aria-live="polite"><p class="caricamento">Caricamento…</p></main>
+<nav class="menu" id="menu">
+  <a href="#/eventi" data-sez="eventi"><span>🎿</span>Eventi</a>
+  <a href="#/tessera" data-sez="tessera"><span>🪪</span>Tessera</a>
+  <a href="#/admin" data-sez="admin" id="menu-admin" hidden><span>🛠️</span>Gestione</a>
+  <a href="#/account" data-sez="account"><span>👤</span>Account</a>
+</nav>
+<div id="avviso" class="avviso" role="status" hidden></div>
+<dialog id="dialogo" class="dialogo"></dialog>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="app.js"></script>
+</body>
+</html>
