@@ -1,5 +1,5 @@
 // Service worker: rende l'app installabile e apribile anche con poca rete.
-const CACHE = 'sct-v2';
+const CACHE = 'sct-1.0.0';
 const FILES = ['./', './index.html', './app.css', './app.js', './config.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/logo-trasparente.png'];
 
@@ -12,6 +12,8 @@ self.addEventListener('activate', e => {
 });
 // File dell'app: prima la rete (così gli aggiornamenti arrivano subito), poi la copia salvata.
 self.addEventListener('fetch', e => {
+  if (new URL(e.request.url).pathname.endsWith('version.json')) return; // controllo aggiornamenti: sempre dalla rete
+
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
   e.respondWith(
@@ -22,3 +24,6 @@ self.addEventListener('fetch', e => {
     }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
   );
 });
+
+// Tasto "Aggiorna": attiva subito la nuova versione
+self.addEventListener('message', e => { if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting(); });
